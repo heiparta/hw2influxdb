@@ -19,20 +19,24 @@ logger.addHandler(stdout_handler)
 
 API_URL = "http://{host}/api/v1/data"
 
+
 class InfluxDBConfig(BaseModel):
     host: str
     port = 8086
     database = "energy"
     retention_policy: Optional[str]
 
+
 class MeterConfig(BaseModel):
     name: str
     host: str
     interval: int = 10
 
+
 class CheckerConfig(BaseModel):
     influxdb: InfluxDBConfig
     meters: list[MeterConfig]
+
 
 class MeterData(BaseModel):
     wifi_strength: int
@@ -51,7 +55,13 @@ async def get_json(session: aiohttp.ClientSession, url: str) -> dict:
     async with session.get(url) as response:
         return await response.json()
 
-async def collect_data(meter: MeterConfig, influx: InfluxDBClient, influx_config: InfluxDBConfig, stop_after: Optional[int] = None) -> None:
+
+async def collect_data(
+    meter: MeterConfig,
+    influx: InfluxDBClient,
+    influx_config: InfluxDBConfig,
+    stop_after: Optional[int] = None,
+) -> None:
     # Create session
     timeout = aiohttp.ClientTimeout(total=10)
     session = aiohttp.ClientSession(timeout=timeout, raise_for_status=True)
@@ -85,10 +95,9 @@ async def collect_data(meter: MeterConfig, influx: InfluxDBClient, influx_config
                     "fields": parsed_data.dict(),
                 }
             ]
-        
+
             # Write to influxdb, ignore errors
-            #influx.write_points(json_body, retention_policy=influx_config.retention_policy)
-            print(json_body, influx_config.retention_policy)
+            influx.write_points(json_body, retention_policy=influx_config.retention_policy)
 
         except Exception as e:
             logger.exception(e)
@@ -105,19 +114,23 @@ async def run() -> None:
 
     # Connect to influxdb
     influx_config = checker_config.influxdb
-    client_params = {"host": influx_config.host, "port": influx_config.port, "database": influx_config.database}
+    client_params = {
+        "host": influx_config.host,
+        "port": influx_config.port,
+        "database": influx_config.database,
+    }
     influx = InfluxDBClient(**client_params)
 
     # For each meter, start a task to collect data
     tasks = []
     for meter in checker_config.meters:
-        tasks.append(collect_data(meter, influx, influx_config)) 
+        tasks.append(collect_data(meter, influx, influx_config))
     await asyncio.gather(*tasks)
 
-    
 
 def main() -> None:
     asyncio.run(run())
+
 
 if __name__ == "__main__":
     main()
