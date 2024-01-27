@@ -35,6 +35,8 @@ class CheckerConfig(BaseModel):
 
 class MeterData(BaseModel):
     wifi_strength: int
+    total_power_import_kwh: float
+    total_power_export_kwh: float
     active_power_w: float
     active_power_l1_w: float
     active_power_l2_w: float
