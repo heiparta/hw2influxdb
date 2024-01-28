@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 from typing import Optional
 from datetime import datetime, timezone
 from influxdb import InfluxDBClient
@@ -19,6 +20,9 @@ logger.addHandler(stdout_handler)
 
 API_URL = "http://{host}/api/v1/data"
 
+class AppArgs(BaseModel):
+    config_file: str
+    dry_run: bool = False
 
 class InfluxDBConfig(BaseModel):
     host: str
@@ -60,7 +64,7 @@ async def collect_data(
     meter: MeterConfig,
     influx: InfluxDBClient,
     influx_config: InfluxDBConfig,
-    stop_after: Optional[int] = None,
+    dry_run: bool = False,
 ) -> None:
     # Create session
     timeout = aiohttp.ClientTimeout(total=10)
@@ -69,11 +73,6 @@ async def collect_data(
     url = API_URL.format(host=meter.host)
     # Loop in interval
     while True:
-        if stop_after is not None:
-            if stop_after > 0:
-                stop_after -= 1
-            if stop_after == 0:
-                break
         await asyncio.sleep(meter.interval)
 
         try:
@@ -97,18 +96,19 @@ async def collect_data(
             ]
 
             # Write to influxdb, ignore errors
-            influx.write_points(json_body, retention_policy=influx_config.retention_policy)
+            if dry_run:
+                logging.debug("Send data (dry-run): %s", json_body)
+            else:
+                influx.write_points(json_body, retention_policy=influx_config.retention_policy)
 
         except Exception as e:
             logger.exception(e)
             continue
 
-    await session.close()
 
-
-async def run() -> None:
+async def run(args: AppArgs) -> None:
     # Read config file
-    with open(sys.argv[1], "r") as f:
+    with open(args.config_file, "r") as f:
         config = yaml.safe_load(f)
     checker_config = CheckerConfig(**config)
 
@@ -124,12 +124,21 @@ async def run() -> None:
     # For each meter, start a task to collect data
     tasks = []
     for meter in checker_config.meters:
-        tasks.append(collect_data(meter, influx, influx_config))
+        tasks.append(collect_data(meter, influx, influx_config, dry_run=args.dry_run))
     await asyncio.gather(*tasks)
+
+def parse_args() -> AppArgs:
+    parser = argparse.ArgumentParser(description='Script to collect data and write to InfluxDB.')
+    parser.add_argument('config_file', type=str, help='Path to the configuration file.')
+    parser.add_argument('--dry-run', action='store_true', help='Run the script in dry run mode.')
+
+    args = parser.parse_args()
+    return AppArgs(config_file=args.config_file, dry_run=args.dry_run)
 
 
 def main() -> None:
-    asyncio.run(run())
+    app_args = parse_args()
+    asyncio.run(run(app_args))
 
 
 if __name__ == "__main__":
