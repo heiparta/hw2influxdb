@@ -50,6 +50,9 @@ class MeterData(BaseModel):
     active_power_l1_w: float
     active_power_l2_w: float
     active_power_l3_w: float
+    active_current_l1_a: float
+    active_current_l2_a: float
+    active_current_l3_a: float
 
     class Config:
         allow_extra = True
